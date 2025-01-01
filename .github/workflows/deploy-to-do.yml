@@ -45,7 +45,7 @@ jobs:
             docker rm gemini-ai-chatbot || true
 
             # Prune old and unused resources
-            docker system prune -a --volumes -f
+            docker system prune
 
             # Run the new container
             docker run -d \
