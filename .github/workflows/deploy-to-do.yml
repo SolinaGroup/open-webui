@@ -8,7 +8,9 @@ on:
 jobs:
   containerize:
     runs-on: ubuntu-latest
-
+    environment:
+      name: production
+      url: https://sap.scidar.org
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -25,7 +27,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: containerize
-
+    environment:
+      name: production
+      url: https://sap.scidar.org
     steps:
       - name: Deploy to server via SSH
         uses: appleboy/ssh-action@v0.1.7
