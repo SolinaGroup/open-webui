@@ -19,7 +19,7 @@ jobs:
         run: echo "${{ secrets.DO_API_TOKEN }}" | docker login registry.digitalocean.com -u docean --password-stdin
 
       - name: Build Docker image
-        run: docker build --no-cache --build-arg OLLAMA_BASE_URL='/ollama' --tag registry.digitalocean.com/scidar/open-webui:${{ github.sha }} -f Dockerfile.prod .
+        run: docker build --build-arg OLLAMA_BASE_URL='/ollama' --tag registry.digitalocean.com/scidar/open-webui:${{ github.sha }} -f Dockerfile.prod .
 
       - name: Push Docker image to DigitalOcean
         run: docker push registry.digitalocean.com/scidar/open-webui:${{ github.sha }}
@@ -44,14 +44,12 @@ jobs:
             docker stop gemini-ai-chatbot || true
             docker rm gemini-ai-chatbot || true
 
-            # Prune old and unused resources
-            docker system prune
-
             # Run the new container
             docker run -d \
               --network=host \
               -v open-webui:/app/backend/data \
               -e OLLAMA_BASE_URL=http://127.0.0.1:11434 \
+              -e WEBUI_NAME=SAP \
               --name open-webui \
               --restart always \
               registry.digitalocean.com/scidar/open-webui:${{ github.sha }}
