@@ -41,8 +41,8 @@ jobs:
           script: |
             echo "${{ secrets.DO_API_TOKEN }}" | docker login registry.digitalocean.com -u docean --password-stdin
             docker pull registry.digitalocean.com/scidar/open-webui:${{ github.sha }}
-            docker stop gemini-ai-chatbot || true
-            docker rm gemini-ai-chatbot || true
+            docker stop open-webui || true
+            docker rm open-webui || true
 
             # Run the new container
             docker run -d \
