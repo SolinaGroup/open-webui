@@ -57,8 +57,6 @@ jobs:
               -v open-webui:/app/backend/data \
               -e OLLAMA_BASE_URL=http://127.0.0.1:11434 \
               -e CHROMA_URL=${{ vars.CHROMA_URL }} \
-              -e DATABASE_TYPE=${{ vars.DATABASE_TYPE }} \
-              -e DATABASE_URL=${{ secrets.DATABASE_URL }} \
               -e WEBUI_NAME=SAP \
               --name open-webui \
               --restart always \
