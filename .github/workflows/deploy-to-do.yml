@@ -58,6 +58,7 @@ jobs:
               -v open-webui:/app/backend/data \
               -e ENABLE_OLLAMA_API=False \
               -e VECTOR_DB=${{ vars.VECTOR_DB }} \
+              -e CHROMA_URL=${{ vars.CHROMA_URL }} \
               -e CHROMA_HTTP_HOST=${{ vars.CHROMA_HTTP_HOST }} \
               -e CHROMA_HTTP_PORT=${{ vars.CHROMA_HTTP_PORT}} \
               -e DATABASE_TYPE=${{ vars.DATABASE_TYPE }} \
