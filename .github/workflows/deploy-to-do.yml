@@ -46,6 +46,7 @@ jobs:
 
             # Run chromadb container
             docker run -d \
+              --network=host \
               --name chromadb \
               -p 8000:8000 \
               --restart always \
@@ -56,7 +57,9 @@ jobs:
               --network=host \
               -v open-webui:/app/backend/data \
               -e ENABLE_OLLAMA_API=False \
-              -e CHROMA_URL=${{ vars.CHROMA_URL }} \
+              -e VECTOR_DB=${{ vars.VECTOR_DB }} \
+              -e CHROMA_HTTP_HOST=${{ vars.CHROMA_HTTP_HOST }}
+              -e CHROMA_HTTP_PORT=${{ vars.CHROMA_HTTP_PORT}}
               -e DATABASE_TYPE=${{ vars.DATABASE_TYPE }} \
               -e DATABASE_URL=${{ secrets.DATABASE_URL }} \
               -e WEBUI_NAME=SAP \
