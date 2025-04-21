@@ -44,11 +44,20 @@ jobs:
             docker stop open-webui || true
             docker rm open-webui || true
 
+            # Run chromadb container
+            docker run -d \
+              --name chromadb \
+              -p 8000:8000 \
+              chromadb/chromadb:latest
+            
             # Run the new container
             docker run -d \
               --network=host \
               -v open-webui:/app/backend/data \
               -e OLLAMA_BASE_URL=http://127.0.0.1:11434 \
+              -e CHROMA_URL=${{ vars.CHROMA_URL }} \
+              -e DATABASE_TYPE=${{ vars.DATABASE_TYPE }} \
+              -e DATABASE_URL=${{ vars.DATABASE_URL }}
               -e WEBUI_NAME=SAP \
               --name open-webui \
               --restart always \
