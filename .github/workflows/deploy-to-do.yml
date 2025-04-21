@@ -48,7 +48,7 @@ jobs:
             docker run -d \
               --name chromadb \
               -p 8000:8000 \
-              chromadb/chromadb:latest
+              chromadb/chroma:latest
             
             # Run the new container
             docker run -d \
