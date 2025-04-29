@@ -1,6 +1,6 @@
 {
-  "name": "Open WebUI",
-  "short_name": "WebUI",
+  "name": "SCIDaR AI Platform",
+  "short_name": "SAP",
   "icons": [
     {
       "src": "/static/web-app-manifest-192x192.png",

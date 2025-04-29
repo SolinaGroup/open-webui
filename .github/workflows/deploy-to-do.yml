@@ -1,0 +1,69 @@
+name: Deploy Application to Digital Ocean
+
+on:
+  push:
+    branches:
+      - production # Trigger the workflow on push to the production branch
+
+jobs:
+  containerize:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://sap.scidar.org
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Log in to DigitalOcean Container Registry
+        run: echo "${{ secrets.DO_API_TOKEN }}" | docker login registry.digitalocean.com -u docean --password-stdin
+
+      - name: Build Docker image
+        run: docker build --build-arg OLLAMA_BASE_URL='/ollama' --tag registry.digitalocean.com/scidar/open-webui:${{ github.sha }} -f Dockerfile.prod .
+
+      - name: Push Docker image to DigitalOcean
+        run: docker push registry.digitalocean.com/scidar/open-webui:${{ github.sha }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: containerize
+    environment:
+      name: production
+      url: https://sap.scidar.org
+    steps:
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            echo "${{ secrets.DO_API_TOKEN }}" | docker login registry.digitalocean.com -u docean --password-stdin
+            docker pull registry.digitalocean.com/scidar/open-webui:${{ github.sha }}
+            docker stop open-webui || true
+            docker rm open-webui || true
+
+            # Run chromadb container
+            docker run -d \
+              --network=host \
+              --name chromadb \
+              -p 8000:8000 \
+              --restart always \
+              chromadb/chroma:latest
+
+            # Run the new container
+            docker run -d \
+              --network=host \
+              -v /opt/open-webui/data:/app/backend/data \
+              -e ENABLE_OLLAMA_API=False \
+              -e VECTOR_DB=${{ vars.VECTOR_DB }} \
+              -e CHROMA_URL=${{ vars.CHROMA_URL }} \
+              -e CHROMA_HTTP_HOST=${{ vars.CHROMA_HTTP_HOST }} \
+              -e CHROMA_HTTP_PORT=${{ vars.CHROMA_HTTP_PORT}} \
+              -e DATABASE_TYPE=${{ vars.DATABASE_TYPE }} \
+              -e DATABASE_URL=${{ secrets.DATABASE_URL }} \
+              -e WEBUI_NAME=SAP \
+              --name open-webui \
+              --restart always \
+              registry.digitalocean.com/scidar/open-webui:${{ github.sha }}
