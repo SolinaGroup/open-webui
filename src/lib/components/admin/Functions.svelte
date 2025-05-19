@@ -192,7 +192,7 @@
 
 <svelte:head>
 	<title>
-		{$i18n.t('Functions')} | {$WEBUI_NAME}
+		{$i18n.t('Functions')} • {$WEBUI_NAME}
 	</title>
 </svelte:head>
 
@@ -447,7 +447,9 @@
 					}
 				}}
 			>
-				<div class=" self-center mr-2 font-medium line-clamp-1">{$i18n.t('Export Functions')}</div>
+				<div class=" self-center mr-2 font-medium line-clamp-1">
+					{$i18n.t('Export Functions')} ({$functions.length})
+				</div>
 
 				<div class=" self-center">
 					<svg
