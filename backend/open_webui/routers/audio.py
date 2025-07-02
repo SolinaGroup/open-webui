@@ -8,7 +8,9 @@ from pathlib import Path
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
+from fnmatch import fnmatch
 import aiohttp
 import aiofiles
 import requests
@@ -18,6 +20,7 @@ from fastapi import (
     Depends,
     FastAPI,
     File,
+    Form,
     HTTPException,
     Request,
     UploadFile,
@@ -93,12 +96,9 @@ def is_audio_conversion_required(file_path):
             # File is AAC/mp4a audio, recommend mp3 conversion
             return True
 
-        # If the codec name or file extension is in the supported formats
-        if (
-            codec_name in SUPPORTED_FORMATS
-            or os.path.splitext(file_path)[1][1:].lower() in SUPPORTED_FORMATS
-        ):
-            return False  # Already supported
+        # If the codec name is in the supported formats
+        if codec_name in SUPPORTED_FORMATS:
+            return False
 
         return True
     except Exception as e:
@@ -168,6 +168,7 @@ class STTConfigForm(BaseModel):
     OPENAI_API_KEY: str
     ENGINE: str
     MODEL: str
+    SUPPORTED_CONTENT_TYPES: list[str] = []
     WHISPER_MODEL: str
     DEEPGRAM_API_KEY: str
     AZURE_API_KEY: str
@@ -202,6 +203,7 @@ async def get_audio_config(request: Request, user=Depends(get_admin_user)):
             "OPENAI_API_KEY": request.app.state.config.STT_OPENAI_API_KEY,
             "ENGINE": request.app.state.config.STT_ENGINE,
             "MODEL": request.app.state.config.STT_MODEL,
+            "SUPPORTED_CONTENT_TYPES": request.app.state.config.STT_SUPPORTED_CONTENT_TYPES,
             "WHISPER_MODEL": request.app.state.config.WHISPER_MODEL,
             "DEEPGRAM_API_KEY": request.app.state.config.DEEPGRAM_API_KEY,
             "AZURE_API_KEY": request.app.state.config.AUDIO_STT_AZURE_API_KEY,
@@ -236,6 +238,10 @@ async def update_audio_config(
     request.app.state.config.STT_OPENAI_API_KEY = form_data.stt.OPENAI_API_KEY
     request.app.state.config.STT_ENGINE = form_data.stt.ENGINE
     request.app.state.config.STT_MODEL = form_data.stt.MODEL
+    request.app.state.config.STT_SUPPORTED_CONTENT_TYPES = (
+        form_data.stt.SUPPORTED_CONTENT_TYPES
+    )
+
     request.app.state.config.WHISPER_MODEL = form_data.stt.WHISPER_MODEL
     request.app.state.config.DEEPGRAM_API_KEY = form_data.stt.DEEPGRAM_API_KEY
     request.app.state.config.AUDIO_STT_AZURE_API_KEY = form_data.stt.AZURE_API_KEY
@@ -250,6 +256,8 @@ async def update_audio_config(
         request.app.state.faster_whisper_model = set_faster_whisper_model(
             form_data.stt.WHISPER_MODEL, WHISPER_MODEL_AUTO_UPDATE
         )
+    else:
+        request.app.state.faster_whisper_model = None
 
     return {
         "tts": {
@@ -269,6 +277,7 @@ async def update_audio_config(
             "OPENAI_API_KEY": request.app.state.config.STT_OPENAI_API_KEY,
             "ENGINE": request.app.state.config.STT_ENGINE,
             "MODEL": request.app.state.config.STT_MODEL,
+            "SUPPORTED_CONTENT_TYPES": request.app.state.config.STT_SUPPORTED_CONTENT_TYPES,
             "WHISPER_MODEL": request.app.state.config.WHISPER_MODEL,
             "DEEPGRAM_API_KEY": request.app.state.config.DEEPGRAM_API_KEY,
             "AZURE_API_KEY": request.app.state.config.AUDIO_STT_AZURE_API_KEY,
@@ -527,10 +536,12 @@ async def speech(request: Request, user=Depends(get_verified_user)):
         return FileResponse(file_path)
 
 
-def transcription_handler(request, file_path):
+def transcription_handler(request, file_path, metadata):
     filename = os.path.basename(file_path)
     file_dir = os.path.dirname(file_path)
     id = filename.split(".")[0]
+
+    metadata = metadata or {}
 
     if request.app.state.config.STT_ENGINE == "":
         if request.app.state.faster_whisper_model is None:
@@ -543,7 +554,7 @@ def transcription_handler(request, file_path):
             file_path,
             beam_size=5,
             vad_filter=request.app.state.config.WHISPER_VAD_FILTER,
-            language=WHISPER_LANGUAGE,
+            language=metadata.get("language") or WHISPER_LANGUAGE,
         )
         log.info(
             "Detected language '%s' with probability %f"
@@ -569,7 +580,14 @@ def transcription_handler(request, file_path):
                     "Authorization": f"Bearer {request.app.state.config.STT_OPENAI_API_KEY}"
                 },
                 files={"file": (filename, open(file_path, "rb"))},
-                data={"model": request.app.state.config.STT_MODEL},
+                data={
+                    "model": request.app.state.config.STT_MODEL,
+                    **(
+                        {"language": metadata.get("language")}
+                        if metadata.get("language")
+                        else {}
+                    ),
+                },
             )
 
             r.raise_for_status()
@@ -619,7 +637,7 @@ def transcription_handler(request, file_path):
 
             # Make request to Deepgram API
             r = requests.post(
-                "https://api.deepgram.com/v1/listen",
+                "https://api.deepgram.com/v1/listen?smart_format=true",
                 headers=headers,
                 params=params,
                 data=file_data,
@@ -777,8 +795,8 @@ def transcription_handler(request, file_path):
             )
 
 
-def transcribe(request: Request, file_path):
-    log.info(f"transcribe: {file_path}")
+def transcribe(request: Request, file_path: str, metadata: Optional[dict] = None):
+    log.info(f"transcribe: {file_path} {metadata}")
 
     if is_audio_conversion_required(file_path):
         file_path = convert_audio_to_mp3(file_path)
@@ -804,7 +822,7 @@ def transcribe(request: Request, file_path):
         with ThreadPoolExecutor() as executor:
             # Submit tasks for each chunk_path
             futures = [
-                executor.submit(transcription_handler, request, chunk_path)
+                executor.submit(transcription_handler, request, chunk_path, metadata)
                 for chunk_path in chunk_paths
             ]
             # Gather results as they complete
@@ -812,10 +830,9 @@ def transcribe(request: Request, file_path):
                 try:
                     results.append(future.result())
                 except Exception as transcribe_exc:
-                    log.exception(f"Error transcribing chunk: {transcribe_exc}")
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Error during transcription.",
+                        detail=f"Error transcribing chunk: {transcribe_exc}",
                     )
     finally:
         # Clean up only the temporary chunks, never the original file
@@ -897,14 +914,19 @@ def split_audio(file_path, max_bytes, format="mp3", bitrate="32k"):
 def transcription(
     request: Request,
     file: UploadFile = File(...),
+    language: Optional[str] = Form(None),
     user=Depends(get_verified_user),
 ):
     log.info(f"file.content_type: {file.content_type}")
 
-    SUPPORTED_CONTENT_TYPES = {"video/webm"}  # Extend if you add more video types!
-    if not (
-        file.content_type.startswith("audio/")
-        or file.content_type in SUPPORTED_CONTENT_TYPES
+    supported_content_types = request.app.state.config.STT_SUPPORTED_CONTENT_TYPES or [
+        "audio/*",
+        "video/webm",
+    ]
+
+    if not any(
+        fnmatch(file.content_type, content_type)
+        for content_type in supported_content_types
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -926,7 +948,12 @@ def transcription(
             f.write(contents)
 
         try:
-            result = transcribe(request, file_path)
+            metadata = None
+
+            if language:
+                metadata = {"language": language}
+
+            result = transcribe(request, file_path, metadata)
 
             return {
                 **result,

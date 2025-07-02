@@ -21,7 +21,8 @@
 		channels,
 		socket,
 		config,
-		isApp
+		isApp,
+		models
 	} from '$lib/stores';
 	import { onMount, getContext, tick, onDestroy } from 'svelte';
 
@@ -43,7 +44,7 @@
 	import { createNewFolder, getFolders, updateFolderParentIdById } from '$lib/apis/folders';
 	import { WEBUI_BASE_URL } from '$lib/constants';
 
-	import ArchivedChatsModal from './Sidebar/ArchivedChatsModal.svelte';
+	import ArchivedChatsModal from './ArchivedChatsModal.svelte';
 	import UserMenu from './Sidebar/UserMenu.svelte';
 	import ChatItem from './Sidebar/ChatItem.svelte';
 	import Spinner from '../common/Spinner.svelte';
@@ -366,7 +367,7 @@
 		window.addEventListener('touchend', onTouchEnd);
 
 		window.addEventListener('focus', onFocus);
-		window.addEventListener('blur-sm', onBlur);
+		window.addEventListener('blur', onBlur);
 
 		const dropZone = document.getElementById('sidebar');
 
@@ -383,7 +384,7 @@
 		window.removeEventListener('touchend', onTouchEnd);
 
 		window.removeEventListener('focus', onFocus);
-		window.removeEventListener('blur-sm', onBlur);
+		window.removeEventListener('blur', onBlur);
 
 		const dropZone = document.getElementById('sidebar');
 
@@ -395,7 +396,7 @@
 
 <ArchivedChatsModal
 	bind:show={$showArchivedChats}
-	on:change={async () => {
+	onUpdate={async () => {
 		await initChatList();
 	}}
 />
@@ -489,10 +490,9 @@
 				draggable="false"
 				on:click={async () => {
 					selectedChatId = null;
-					await goto('/');
-					const newChatButton = document.getElementById('new-chat-button');
+
+					await temporaryChatEnabled.set(false);
 					setTimeout(() => {
-						newChatButton?.click();
 						if ($mobile) {
 							showSidebar.set(false);
 						}
@@ -504,7 +504,7 @@
 						<img
 							crossorigin="anonymous"
 							src="{WEBUI_BASE_URL}/static/favicon.png"
-							class=" size-5 -translate-x-1.5 rounded-full"
+							class="sidebar-new-chat-icon size-5 -translate-x-1.5 rounded-full"
 							alt="logo"
 						/>
 					</div>
@@ -544,6 +544,24 @@
 				</a>
 			</div>
 		{/if} -->
+
+		<div class="px-1.5 flex justify-center text-gray-800 dark:text-gray-200">
+			<button
+				class="grow flex items-center space-x-3 rounded-lg px-2 py-[7px] hover:bg-gray-100 dark:hover:bg-gray-900 transition outline-none"
+				on:click={() => {
+					showSearch.set(true);
+				}}
+				draggable="false"
+			>
+				<div class="self-center">
+					<MagnifyingGlass strokeWidth="2" className="size-[1.1rem]" />
+				</div>
+
+				<div class="flex self-center translate-y-[0.5px]">
+					<div class=" self-center font-medium text-sm font-primary">{$i18n.t('Search')}</div>
+				</div>
+			</button>
+		</div>
 
 		{#if ($config?.features?.enable_notes ?? false) && ($user?.role === 'admin' || ($user?.permissions?.features?.notes ?? true))}
 			<div class="px-1.5 flex justify-center text-gray-800 dark:text-gray-200">
@@ -626,29 +644,47 @@
 			</div>
 		{/if}
 
-		<div class="px-1.5 flex justify-center text-gray-800 dark:text-gray-200">
-			<button
-				class="grow flex items-center space-x-3 rounded-lg px-2 py-[7px] hover:bg-gray-100 dark:hover:bg-gray-900 transition outline-none"
-				on:click={() => {
-					showSearch.set(true);
-				}}
-				draggable="false"
-			>
-				<div class="self-center">
-					<MagnifyingGlass strokeWidth="2" className="size-[1.1rem]" />
-				</div>
+		<div class="relative flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
+			{#if ($models ?? []).length > 0 && ($settings?.pinnedModels ?? []).length > 0}
+				<div class="mt-0.5">
+					{#each $settings.pinnedModels as modelId (modelId)}
+						{@const model = $models.find((model) => model.id === modelId)}
+						{#if model}
+							<div class="px-1.5 flex justify-center text-gray-800 dark:text-gray-200">
+								<a
+									class="grow flex items-center space-x-2.5 rounded-lg px-2 py-[7px] hover:bg-gray-100 dark:hover:bg-gray-900 transition"
+									href="/?model={modelId}"
+									on:click={() => {
+										selectedChatId = null;
+										chatId.set('');
 
-				<div class="flex self-center translate-y-[0.5px]">
-					<div class=" self-center font-medium text-sm font-primary">{$i18n.t('Search')}</div>
-				</div>
-			</button>
-		</div>
+										if ($mobile) {
+											showSidebar.set(false);
+										}
+									}}
+									draggable="false"
+								>
+									<div class="self-center shrink-0">
+										<img
+											crossorigin="anonymous"
+											src={model?.info?.meta?.profile_image_url ?? '/static/favicon.png'}
+											class=" size-5 rounded-full -translate-x-[0.5px]"
+											alt="logo"
+										/>
+									</div>
 
-		<div
-			class="relative flex flex-col flex-1 overflow-y-auto overflow-x-hidden {$temporaryChatEnabled
-				? 'opacity-20'
-				: ''}"
-		>
+									<div class="flex self-center translate-y-[0.5px]">
+										<div class=" self-center font-medium text-sm font-primary line-clamp-1">
+											{model?.name ?? modelId}
+										</div>
+									</div>
+								</a>
+							</div>
+						{/if}
+					{/each}
+				</div>
+			{/if}
+
 			{#if $config?.features?.enable_channels && ($user?.role === 'admin' || $channels.length > 0)}
 				<Folder
 					className="px-2 mt-0.5"
@@ -732,10 +768,6 @@
 					}
 				}}
 			>
-				{#if $temporaryChatEnabled}
-					<div class="absolute z-40 w-full h-full flex justify-center"></div>
-				{/if}
-
 				{#if $pinnedChats.length > 0}
 					<div class="flex flex-col space-y-1 rounded-xl">
 						<Folder
@@ -785,7 +817,7 @@
 							<div
 								class="ml-3 pl-1 mt-[1px] flex flex-col overflow-y-auto scrollbar-hidden border-s border-gray-100 dark:border-gray-900"
 							>
-								{#each $pinnedChats as chat, idx}
+								{#each $pinnedChats as chat, idx (`pinned-chat-${chat?.id ?? idx}`)}
 									<ChatItem
 										className=""
 										id={chat.id}
@@ -831,7 +863,7 @@
 				<div class=" flex-1 flex flex-col overflow-y-auto scrollbar-hidden">
 					<div class="pt-1.5">
 						{#if $chats}
-							{#each $chats as chat, idx}
+							{#each $chats as chat, idx (`chat-${chat?.id ?? idx}`)}
 								{#if idx === 0 || (idx > 0 && chat.time_range !== $chats[idx - 1].time_range)}
 									<div
 										class="w-full pl-2.5 text-xs text-gray-500 dark:text-gray-500 font-medium {idx ===
