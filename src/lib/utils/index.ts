@@ -791,7 +791,14 @@ export const convertOpenAIChats = (_chats) => {
 				user_id: '',
 				title: convo['title'],
 				chat: chat,
-				timestamp: convo['create_time']
+				timestamp: convo['create_time'],
+				// Ensure backend receives explicit timestamps; it falls back to now if absent
+				created_at: Number.isFinite(convo['create_time'])
+					? Math.floor(convo['create_time'])
+					: undefined,
+				updated_at: Number.isFinite(convo['update_time'])
+					? Math.floor(convo['update_time'])
+					: (Number.isFinite(convo['create_time']) ? Math.floor(convo['create_time']) : undefined)
 			});
 		} else {
 			failed++;
