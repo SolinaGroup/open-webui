@@ -60,31 +60,47 @@
 		}
 	}
 
-	const importChats = async (_chats) => {
-		for (const chat of _chats) {
-			console.log(chat);
+const importChats = async (_chats) => {
+    let successCount = 0;
+    let failCount = 0;
 
-			if (chat.chat) {
-				await importChat(
-					localStorage.token,
-					chat.chat,
-					chat.meta ?? {},
-					false,
-					null,
-					chat?.created_at ?? null,
-					chat?.updated_at ?? null
-				);
-			} else {
-				// Legacy format
-				await importChat(localStorage.token, chat, {}, false, null);
-			}
-		}
+    for (const chat of _chats) {
+        console.log(chat);
 
-		currentChatPage.set(1);
-		await chats.set(await getChatList(localStorage.token, $currentChatPage));
-		pinnedChats.set(await getPinnedChatList(localStorage.token));
-		scrollPaginationEnabled.set(true);
-	};
+        try {
+            if (chat.chat) {
+                await importChat(
+                    localStorage.token,
+                    chat.chat,
+                    chat.meta ?? {},
+                    false,
+                    null,
+                    chat?.created_at ?? null,
+                    chat?.updated_at ?? null
+                );
+            } else {
+                // Legacy format
+                await importChat(localStorage.token, chat, {}, false, null);
+            }
+            successCount += 1;
+        } catch (e) {
+            console.error('Failed to import chat:', e);
+            failCount += 1;
+        }
+    }
+
+    currentChatPage.set(1);
+    await chats.set(await getChatList(localStorage.token, $currentChatPage));
+    pinnedChats.set(await getPinnedChatList(localStorage.token));
+    scrollPaginationEnabled.set(true);
+
+    if (successCount > 0) {
+        toast.success(`${successCount} chat${successCount > 1 ? 's' : ''} imported`);
+    }
+    if (failCount > 0) {
+        toast.warning(`${failCount} chat${failCount > 1 ? 's' : ''} failed to import`);
+    }
+};
 
 	const exportChats = async () => {
 		let blob = new Blob([JSON.stringify(await getAllChats(localStorage.token))], {
