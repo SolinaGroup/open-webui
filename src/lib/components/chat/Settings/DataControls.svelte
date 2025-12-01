@@ -16,8 +16,8 @@
 		deleteAllChats,
 		getAllChats,
 		getChatList,
-		importChat,
-		getPinnedChatList
+		getPinnedChatList,
+		importChats
 	} from '$lib/apis/chats';
 	import { getImportOrigin, convertOpenAIChats } from '$lib/utils';
 	import { onMount, getContext } from 'svelte';
@@ -52,55 +52,58 @@
 					console.log('Unable to import chats:', error);
 				}
 			}
-			importChats(chats);
+			importChatsHandler(chats);
 		};
 
 		if (importFiles.length > 0) {
 			reader.readAsText(importFiles[0]);
 		}
 	}
+	const importChatsHandler = async (_chats) => {
+		try {
+			const res = await importChats(
+				localStorage.token,
+				_chats.map((chat) => {
+					if (chat.chat) {
+						return {
+							chat: chat.chat,
+							meta: chat.meta ?? {},
+							pinned: false,
+							folder_id: chat?.folder_id ?? null,
+							created_at: chat?.created_at ?? null,
+							updated_at: chat?.updated_at ?? null
+						};
+					} else {
+						// Legacy format
+						return {
+							chat: chat,
+							meta: {},
+							pinned: false,
+							folder_id: null,
+							created_at: chat?.created_at ?? null,
+							updated_at: chat?.updated_at ?? null
+						};
+					}
+				})
+			);
 
-const importChats = async (_chats) => {
-    let successCount = 0;
-    let failCount = 0;
+			currentChatPage.set(1);
+			await chats.set(await getChatList(localStorage.token, $currentChatPage));
+			pinnedChats.set(await getPinnedChatList(localStorage.token));
+			scrollPaginationEnabled.set(true);
 
-    for (const chat of _chats) {
-        console.log(chat);
-
-        try {
-            if (chat.chat) {
-                await importChat(
-                    localStorage.token,
-                    chat.chat,
-                    chat.meta ?? {},
-                    false,
-                    null,
-                    chat?.created_at ?? null,
-                    chat?.updated_at ?? null
-                );
-            } else {
-                // Legacy format
-                await importChat(localStorage.token, chat, {}, false, null);
-            }
-            successCount += 1;
-        } catch (e) {
-            console.error('Failed to import chat:', e);
-            failCount += 1;
-        }
-    }
-
-    currentChatPage.set(1);
-    await chats.set(await getChatList(localStorage.token, $currentChatPage));
-    pinnedChats.set(await getPinnedChatList(localStorage.token));
-    scrollPaginationEnabled.set(true);
-
-    if (successCount > 0) {
-        toast.success(`${successCount} chat${successCount > 1 ? 's' : ''} imported`);
-    }
-    if (failCount > 0) {
-        toast.warning(`${failCount} chat${failCount > 1 ? 's' : ''} failed to import`);
-    }
-};
+			if (res && res.length > 0) {
+				toast.success(
+					`${res.length} chat${res.length > 1 ? 's' : ''} imported`
+				);
+			} else {
+				toast.warning('No chats were imported.');
+			}
+		} catch (e) {
+			console.error('Failed to import chats:', e);
+			toast.error('Failed to import chats.');
+		}
+	};
 
 	const exportChats = async () => {
 		let blob = new Blob([JSON.stringify(await getAllChats(localStorage.token))], {
