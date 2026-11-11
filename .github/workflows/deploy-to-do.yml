@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - production # Trigger the workflow on push to the production branch
+  workflow_dispatch: # Redeploy production by hand (e.g. to test the VPN step)
 
 jobs:
   containerize:
@@ -31,6 +32,20 @@ jobs:
       name: production
       url: https://sap.scidar.org
     steps:
+      # The droplet's firewall (sap-fw) only allows SSH from the Solina VPN's egress IP, so the
+      # runner joins NetBird first as an ephemeral peer in the "CI - SAP deploy" group, which may
+      # reach tcp/22 on the SAP droplet only. The setup key is the production secret NETBIRD_SETUP_KEY.
+      - name: Join Solina VPN (NetBird)
+        run: |
+          curl -fsSL https://pkgs.netbird.io/install.sh | sh
+          sudo netbird up --management-url https://vpn.solinagroup.com \
+            --setup-key "${{ secrets.NETBIRD_SETUP_KEY }}" \
+            --hostname "gha-sap-deploy-${{ github.run_id }}"
+          for i in $(seq 1 30); do
+            nc -z -w3 ${{ vars.SERVER_HOST }} 22 && break; sleep 2
+          done
+          nc -zv -w5 ${{ vars.SERVER_HOST }} 22
+
       - name: Deploy to server via SSH
         uses: appleboy/ssh-action@v0.1.7
         with:
@@ -67,3 +82,7 @@ jobs:
               --name open-webui \
               --restart always \
               registry.digitalocean.com/scidar/open-webui:${{ github.sha }}
+
+      - name: Leave VPN
+        if: always()
+        run: sudo netbird down || true
